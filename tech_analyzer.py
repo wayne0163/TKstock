@@ -1,5 +1,5 @@
-import pandas as pd
 import sqlite3
+import pandas as pd
 import tushare as ts
 from datetime import datetime
 import streamlit as st
@@ -34,13 +34,13 @@ def calculate_technical_indicators(ts_code, db_path):
     conn = sqlite3.connect(db_path)
     try:
         # 获取个股历史数据
-        df = pd.read_sql(f"""
+        df = pd.read_sql("""
             SELECT trade_date,close,vol 
             FROM daily_data 
-            WHERE ts_code='{ts_code}' 
+            WHERE ts_code=? 
             ORDER BY trade_date DESC
             LIMIT 242
-            """, conn)
+            """, conn, params=(str(ts_code),))
         
         if len(df) < 242:
             return None

@@ -1,7 +1,11 @@
+import pandas as pd
 import data_manager
 import tech_analyzer
 import streamlit as st
 import time
+from datetime import datetime, timedelta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # 主界面框架
 st.title("A股股票决策系统")
@@ -130,25 +134,143 @@ elif menu == "技术分析":
 
 elif menu == "K线图":
     st.subheader("K线图分析")
-    with st.expander("参数设置"):
-        stock_code = st.text_input("股票代码", value="600519")
-        date_range = st.date_input("日期范围", [])
     
-    if st.button("生成图表"):
-        st.warning("功能开发中，预计下个版本上线")
+    # 使用两列布局
+    col_setting, col_chart = st.columns([1, 3])
+    
+    with col_setting:
+        with st.expander("⚙️ 基本参数", expanded=True):
+            input_method = st.radio("输入方式", ["单个股票", "CSV文件"], index=0)
+            
+            if input_method == "单个股票":
+                stock_code = st.text_input("股票代码", value="600519", help="请输入完整代码如600519.SH")
+                stock_list = [stock_code] if stock_code else []
+            else:
+                uploaded_file = st.file_uploader("上传股票池CSV", type=["csv"])
+                if uploaded_file:
+                    df = pd.read_csv(uploaded_file)
+                    stock_list = df['ts_code'].tolist() if 'ts_code' in df.columns else []
+                else:
+                    stock_list = []
+            
+            start_date = st.date_input("开始日期", value=datetime.now() - timedelta(days=365))
+            end_date = st.date_input("结束日期", value=datetime.now())
+            
+        with st.expander("📈 技术指标"):
+            ma_periods = st.multiselect("移动平均线", [20, 60, 240], default=[20, 60, 240])
+            rsi_period = st.selectbox("RSI周期", [6, 13, ], index=0)
+            show_volume = st.checkbox("显示成交量", value=True)
+            
+        if 'current_stock_index' not in st.session_state:
+            st.session_state.current_stock_index = 0
+        
+        if len(stock_list) > 1:
+            col_prev, _, col_next = st.columns([2,6,2])
+            with col_prev:
+                if st.button("← 上一只"):
+                    st.session_state.current_stock_index = max(0, st.session_state.current_stock_index - 1)
+            with col_next:
+                if st.button("下一只 →"):
+                    st.session_state.current_stock_index = min(len(stock_list)-1, st.session_state.current_stock_index + 1)
+    
+    with col_chart:
+        if st.button('生成图表', type='primary'):
+            st.session_state.chart_generated = True
+        
+        if st.session_state.get('chart_generated'):
+            def generate_chart():
+                try:
+                    # 原有图表生成逻辑
+                    current_code = stock_list[st.session_state.current_stock_index]
+                    
+                    # 调用新模块生成图表
+                    from kline_manager import generate_chart
+                    processed_code = current_code
+                    if '.' not in processed_code:
+                        if processed_code.startswith('6'):
+                            processed_code += '.SH'
+                        elif processed_code.startswith(('0', '2')):
+                            processed_code += '.SZ'
+                        elif processed_code.startswith('8'):
+                            processed_code += '.BJ'
+                        else:
+                            st.warning("股票代码格式错误，请输入完整代码如600519.SH")
+                            return
+                    fig, df = generate_chart(
+                        stock_code=processed_code,
+                        start_date=start_date.strftime('%Y%m%d'),
+                        end_date=end_date.strftime('%Y%m%d'),
+                        ma_periods=ma_periods,
+                        rsi_periods=[rsi_period],
+                        show_volume=show_volume
+                    )
+
+                    if not fig:
+                        st.warning(df)  # 此处df为错误信息
+                        return
+
+                    # 调整图表容器样式
+                    st.markdown(f'<div style="margin-bottom: 35px;">', unsafe_allow_html=True)
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # 显示当前股票序号
+                    # 轮播控制按钮
+                    if len(stock_list) > 1:
+                        col1, col2 = st.columns([1,3])
+                        with col1:
+                            if st.button('← 上一只', use_container_width=True):
+                                st.session_state.current_stock_index = (st.session_state.current_stock_index - 1) % len(stock_list)
+                        with col2:
+                            if st.button('下一只 →', use_container_width=True):
+                                st.session_state.current_stock_index = (st.session_state.current_stock_index + 1) % len(stock_list)
+                        
+                        st.write(f"当前展示：{st.session_state.current_stock_index+1}/{len(stock_list)} ({processed_code})")
+                    
+                    # 显示最新数据摘要
+                    with st.expander("最新数据概览"):
+                        st.dataframe(
+                            df.tail(10)[['trade_date', 'open', 'close', 'high', 'low', 'vol']]
+                            .style.background_gradient(cmap='Blues')
+                        )
+
+                except Exception as e:
+                    st.error(f"图表生成失败: {str(e)}")
+                
+                # 监听参数变化自动重置索引
+                current_params = (ma_periods, rsi_period, start_date, end_date)
+                if 'last_params' not in st.session_state or st.session_state.last_params != current_params:
+                    st.session_state.current_stock_index = 0
+                    st.session_state.last_params = current_params
+        
+        # 参数变更时重置生成状态
+        if 'last_params' in st.session_state and st.session_state.last_params != current_params:
+            st.session_state.chart_generated = False
+
+            # 添加样式说明
+            st.markdown("""
+            <style>
+            div[data-testid="stExpander"] div[role="button"] p {
+                font-size: 1.2rem;
+                font-weight: 600;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
 elif menu == "回测系统":
-    st.subheader("策略回测")
-    with st.form("backtest_form"):
-        capital = st.number_input("初始资金(万元)", value=100.0)
-        start_date = st.date_input("回测开始日期")
-        
-        if st.form_submit_button("执行回测"):
-            st.error("回测模块需要集成Backtrader，当前暂未实现")
+        st.subheader("策略回测")
+        with st.form("backtest_form"):
+            capital = st.number_input("初始资金(万元)", value=100.0)
+            start_date = st.date_input("回测开始日期")
+            
+            if st.form_submit_button("执行回测"):
+                st.error("回测模块需要集成Backtrader，当前暂未实现")
 
 elif menu == "交易分析":
-    st.subheader("持仓分析")
-    uploaded_trades = st.file_uploader("上传交易记录", type=["csv"])
-    if uploaded_trades:
-        st.info("交易分析模块需要对接持仓数据库，当前仅支持CSV预览")
-        st.dataframe(pd.read_csv(uploaded_trades).head())
+        st.subheader("持仓分析")
+        uploaded_trades = st.file_uploader("上传交易记录", type=["csv"])
+        if uploaded_trades:
+            st.info("交易分析模块需要对接持仓数据库，当前仅支持CSV预览")
+            st.dataframe(pd.read_csv(uploaded_trades).head())
+
+            generate_chart()

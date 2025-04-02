@@ -48,10 +48,6 @@ def init_db(db_path):
     conn.commit()
     conn.close()
 
-def read_config():
-    config = configparser.ConfigParser()
-    config.read('config/settings.ini')
-    return config
 
 
 def get_database_stats(db_path):
@@ -113,50 +109,39 @@ def download_daily_data(db_path=None, token=None, update_progress=None):
         def update_progress(progress, message):
             pass
     
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    # 获取最新交易日期
-    cursor.execute("SELECT MAX(trade_date) FROM daily_data")
-    last_date = cursor.fetchone()[0]
-    
-    # 计算日期范围
-    end_date = datetime.now().strftime('%Y%m%d')
-    if last_date is None:
-        trade_cal = pro.trade_cal(exchange='', start_date='20100101', end_date=end_date)
-        trade_dates = trade_cal[trade_cal['is_open'] == 1]['cal_date'].tolist()
-        start_date = trade_dates[-400] if len(trade_dates) >= 400 else trade_dates[0]
-    else:
-        start_date = last_date
-    
-    # 获取交易日历
-    trade_cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_date)
-    trade_dates = trade_cal[trade_cal['is_open'] == 1]['cal_date'].tolist()
-    
-    # 下载数据
-    total_days = len(trade_dates)
-    current_day = 0
-    
-    def update_progress(progress, message):
-        pass
-    
-    for date in trade_dates:
-        if date >= start_date:
-            current_day += 1
-            progress = current_day / total_days
-            update_progress(progress, f'正在下载 {date} 日线数据 ({current_day}/{total_days})')
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        
+        # 使用事务处理批量操作
+        with conn:
+            # 获取最新交易日期
+            max_date = pd.read_sql("SELECT MAX(trade_date) FROM daily_data", conn).iloc[0,0]
+            end_date = datetime.now().strftime('%Y%m%d')
+
+            # 获取需要更新的日期范围
+            if not max_date:
+                trade_cal = pro.trade_cal(exchange='', start_date='20100101', end_date=end_date)
+                trade_dates = trade_cal[trade_cal['is_open'] == 1]['cal_date'].tolist()
+                date_range = trade_dates[-400:] if len(trade_dates) >= 400 else trade_dates
+            else:
+                date_range = [max_date]
+
+            # 批量获取数据
+            df = pd.concat([pro.daily(trade_date=d) for d in date_range])
             
-            df = pro.daily(trade_date=date)
-            if not df.empty:
-                df = df.drop_duplicates(['ts_code', 'trade_date'])
-                try:
-                    df.to_sql('daily_data', conn, if_exists='append', index=False, 
-                            method='multi', chunksize=1000)
-                except sqlite3.IntegrityError as e:
-                    print(f"跳过重复日线数据 {date}: {str(e)}")
-                    continue
-    
-    conn.close()
+            # 使用临时表进行批量更新
+            df.drop_duplicates(['ts_code', 'trade_date']).to_sql(
+                'temp_daily', conn, if_exists='replace', index=False)
+            
+            # 执行UPSERT操作
+            conn.execute('''
+                INSERT OR IGNORE INTO daily_data
+                SELECT * FROM temp_daily
+                WHERE (ts_code, trade_date) NOT IN (
+                    SELECT ts_code, trade_date FROM daily_data
+                )
+            ''')
+            conn.execute("DROP TABLE IF EXISTS temp_daily")
 
 def download_fina_indicator(db_path, token, update_progress=lambda progress, message: None):
     """下载财务指标数据（使用VIP接口）"""
@@ -210,60 +195,25 @@ def download_daily_basic(db_path, token, update_progress=lambda progress, messag
     ts.set_token(token)
     pro = ts.pro_api()
     
-    # 检查数据库是否存在
-    if not os.path.exists(db_path):
-        init_db(db_path)
-    else:
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_basic'")
-            if not cursor.fetchone():
-                init_db(db_path)
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    # 获取最新交易日期
-    cursor.execute("SELECT MAX(trade_date) FROM daily_data")
-    last_date = cursor.fetchone()[0]
-    
-    # 计算日期范围（修复日期逻辑）
-    end_date = datetime.now().strftime('%Y%m%d')
-    if last_date is None:
-        trade_cal = pro.trade_cal(exchange='', start_date='20100101', end_date=end_date)
-        trade_dates = trade_cal[trade_cal['is_open'] == 1]['cal_date'].tolist()
-        start_date = trade_dates[-400] if len(trade_dates) >= 400 else trade_dates[0]
-    else:
-        # 获取最后一个已有日期的下个交易日
-        next_day = pro.trade_cal(exchange='', start_date=last_date, end_date=end_date)
-        next_day = next_day[next_day['is_open'] == 1]['cal_date'].tolist()
-        start_date = next_day[1] if len(next_day) > 1 else end_date  # 跳过已存在的日期
-        print(f"start_date: {start_date}")
-    
-    # 获取交易日历
-    trade_cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_date)
-    trade_dates = trade_cal[trade_cal['is_open'] == 1]['cal_date'].tolist()
-    
-    # 下载数据
-    total_days = len(trade_dates)
-    current_day = 0
-    
-    # 在下载函数开头添加去重检查
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")  # 提升写入性能
-    
-    for date in trade_dates:
-        if date >= start_date:
-            current_day += 1
-            progress = current_day / total_days
-            update_progress(progress, f'正在下载 {date} 每日指标 ({current_day}/{total_days})')
-            
-            # 获取数据后立即处理
-            df = pro.daily_basic(trade_date=date)
-            
-            if df is not None and not df.empty:
-                # 去除重复记录并插入数据库
-                df = df.drop_duplicates(['ts_code', 'trade_date'])
-                df.to_sql('daily_basic', conn, if_exists='append', index=False)
-    
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        
+        # 获取最新交易日期
+        max_date = pd.read_sql("SELECT MAX(trade_date) FROM daily_basic", conn).iloc[0,0]
+        trade_date = max_date or datetime.now().strftime('%Y%m%d')
+
+        # 获取每日指标数据
+        df = pro.daily_basic(trade_date=trade_date)
+        
+        # 使用批量UPSERT操作
+        df['update_flag'] = 1
+        existing = pd.read_sql(
+            "SELECT ts_code, trade_date FROM daily_basic WHERE trade_date = ?",
+            conn, params=(trade_date,))
+        
+        if not existing.empty:
+            df = df[~df['ts_code'].isin(existing['ts_code'])]
+        
+        if not df.empty:
+            df.to_sql('daily_basic', conn, if_exists='append', index=False,
+                     method='multi', chunksize=1000)
