@@ -30,3 +30,18 @@ __pycache__/
 
 # 忽略数据库文件
 /data/*.db
+
++# 项目特定忽略规则
+/data/
+/config/settings.ini
+/results/
+/venv/
+
++# Python虚拟环境
+.env
+venv/
+ENV/
+
++# 开发环境文件
+*.sublime-project
+*.sublime-workspace
