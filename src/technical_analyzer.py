@@ -46,20 +46,26 @@ class TechnicalAnalyzer:
             raise
 
     def check_conditions(self, df):
-        """Check screening conditions."""
+        """Check screening conditions and return result code."""
         if len(df) < 242:
-            return False
+            return pd.DataFrame([{'result': 99}])
         
         latest = df.iloc[-1]
         
         # Condition 1: MA240 rising
         cond1 = latest['MA240'] > df['MA240'].iloc[-2]
+        if not cond1:
+            return pd.DataFrame([{'result': 1}])
         
         # Condition 2: Latest price > 110% of 240 days ago
         cond2 = latest['close'] > df['close'].iloc[-240] * 1.1
+        if not cond2:
+            return pd.DataFrame([{'result': 2}])
         
         # Condition 3: MA60 or MA20 rising
         cond3 = (latest['MA60'] > df['MA60'].iloc[-2]) or (latest['MA20'] > df['MA20'].iloc[-2])
+        if not cond3:
+            return pd.DataFrame([{'result': 3}])
         
         # Condition 4: Volume crossover and trend
         cond4 = False
@@ -73,8 +79,13 @@ class TechnicalAnalyzer:
         vol_ma18_up = (df['VOL_MA18'].iloc[-1] > df['VOL_MA18'].iloc[-2]) and \
                       (df['VOL_MA18'].iloc[-2] > df['VOL_MA18'].iloc[-3])
         cond4 = cond4 and vol_ma3_up and vol_ma18_up
+        if not cond4:
+            return pd.DataFrame([{'result': 4}])
         
         # Condition 5: RSI
         cond5 = (latest['RSI13'] > 50) and (latest['RSI6'] > 70)
+        if not cond5:
+            return pd.DataFrame([{'result': 5}])
         
-        return all([cond1, cond2, cond3, cond4, cond5])
+        # All conditions passed
+        return pd.DataFrame([{'result': 0}])

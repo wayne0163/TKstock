@@ -22,25 +22,25 @@ class StockScreener:
         )
 
     def run_screening(self):
-        """Run stock screening process."""
+        """运行股票筛选过程，输出所有股票及其筛选结果"""
         try:
-            # Select watchlist file
+            # 选择观察列表文件
             csv_path = filedialog.askopenfilename(
-                title="Select Watchlist CSV",
-                filetypes=[("CSV files", "*.csv")]
+                title="选择观察列表 CSV",
+                filetypes=[("CSV 文件", "*.csv")]
             )
             if not csv_path:
                 return None
             
-            # Read stock codes
+            # 读取股票代码
             watchlist = pd.read_csv(csv_path)
             ts_codes = watchlist['ts_code'].dropna().unique()
             
-            # Connect to database
+            # 连接数据库
             conn = sqlite3.connect(self.daily_db)
             results = []
             
-            # Screen each stock
+            # 筛选每只股票
             for ts_code in ts_codes:
                 try:
                     df = pd.read_sql(
@@ -48,29 +48,40 @@ class StockScreener:
                         conn
                     )
                     if len(df) < 242:
+                        results.append({
+                            'ts_code': ts_code,
+                            'result': 99
+                        })
                         continue
                     
                     df = self.analyzer.calculate_indicators(df)
-                    if self.analyzer.check_conditions(df):
-                        latest = df.iloc[-1]
-                        results.append({
-                            'ts_code': ts_code,
-                            'close': round(latest['close'], 2),
-                            'MA20': round(latest['MA20'], 2),
-                            'MA60': round(latest['MA60'], 2),
-                            'MA240': round(latest['MA240'], 2),
-                            'RSI6': round(latest['RSI6'], 2),
-                            'RSI13': round(latest['RSI13'], 2),
-                            'VOL_MA3': round(latest['VOL_MA3'], 2),
-                            'VOL_MA18': round(latest['VOL_MA18'], 2)
-                        })
+                    result_df = self.analyzer.check_conditions(df)
+                    result_code = result_df.iloc[0]['result']
+                    
+                    latest = df.iloc[-1]
+                    results.append({
+                        'ts_code': ts_code,
+                        'close': round(latest['close'], 2),
+                        'MA20': round(latest['MA20'], 2),
+                        'MA60': round(latest['MA60'], 2),
+                        'MA240': round(latest['MA240'], 2),
+                        'RSI6': round(latest['RSI6'], 2),
+                        'RSI13': round(latest['RSI13'], 2),
+                        'VOL_MA3': round(latest['VOL_MA3'], 2),
+                        'VOL_MA18': round(latest['VOL_MA18'], 2),
+                        'result': result_code
+                    })
                 except Exception as e:
-                    logging.error(f"Failed to process stock {ts_code}: {str(e)}")
+                    logging.error(f"处理股票 {ts_code} 失败: {str(e)}")
+                    results.append({
+                        'ts_code': ts_code,
+                        'result': -1  # 表示处理错误
+                    })
                     continue
             
             conn.close()
             
-            # Save results
+            # 保存结果
             if results:
                 result_df = pd.DataFrame(results)
                 numeric_cols = result_df.select_dtypes(include=[np.number]).columns
@@ -83,7 +94,7 @@ class StockScreener:
                 basic_path = os.path.join('data', 'stock_basic_all.csv')
                 try:
                     basic_df = pd.read_csv(basic_path, encoding='utf-8-sig')
-                    merged_df = pd.merge(result_df,basic_df,on='ts_code')
+                    merged_df = pd.merge(result_df, basic_df, on='ts_code', how='left')
                     merged_df.fillna('未知', inplace=True)
                     merged_df.to_csv(save_path, index=False, encoding='utf-8-sig', float_format='%.2f')
                 except Exception as e:
@@ -92,5 +103,5 @@ class StockScreener:
                 return {'count': len(result_df), 'path': save_path}
             return None
         except Exception as e:
-            logging.error(f"Screening process failed: {str(e)}")
+            logging.error(f"筛选过程失败: {str(e)}")
             raise
