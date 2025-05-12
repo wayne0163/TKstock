@@ -13,12 +13,17 @@ class DataStorage:
 
     def _setup_logging(self):
         """Configure logging."""
+        # 确保日志目录存在
+        log_dir = 'data/logs'
+        os.makedirs(log_dir, exist_ok=True)
+        
         logging.basicConfig(
-            filename='data/logs/data_update.log',
+            filename=os.path.join(log_dir, 'data_update.log'),
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
 
+    # 其余方法保持不变
     def _init_tables(self):
         """Create database tables."""
         with sqlite3.connect(self.daily_db) as conn:

@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 from src.data_acquisition import DataAcquisition
 from src.data_storage import DataStorage
 from src.stock_screener import StockScreener
@@ -35,6 +35,34 @@ class StockSystemGUI:
         tk.Button(
             self.root, text="Exit", command=self._exit, width=20, bg="lightgray", fg="black"
         ).pack(pady=10)
+
+    def _screen_stocks(self):
+        """Run stock screening with progress bar."""
+        try:
+            # Create progress window
+            progress_window = tk.Toplevel(self.root)
+            progress_window.title("Screening Progress")
+            progress_window.geometry("300x100")
+            progress_bar = ttk.Progressbar(progress_window, mode='determinate', maximum=100)
+            progress_bar.pack(pady=20, padx=20, fill=tk.X)
+            
+            def update_progress(value):
+                progress_bar['value'] = value
+                progress_window.update()
+            
+            result = self.screener.run_screening(progress_callback=update_progress)
+            
+            progress_window.destroy()
+            if result:
+                messagebox.showinfo(
+                    "Success",
+                    f"Screening completed! {result['count']} stocks passed.\nResults saved to: {result['path']}"
+                )
+            else:
+                messagebox.showinfo("Info", "No stocks processed or no results generated.")
+        except Exception as e:
+            progress_window.destroy()
+            messagebox.showerror("Error", f"Screening failed: {str(e)}")
 
     def _update_daily(self):
         """Update daily data."""
@@ -76,23 +104,8 @@ class StockSystemGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update daily data: {str(e)}")
 
-    def _screen_stocks(self):
-        """Run stock screening."""
-        try:
-            result = self.screener.run_screening()
-            if result:
-                messagebox.showinfo(
-                    "Success",
-                    f"Screening completed! Found {result['count']} stocks.\nSaved to: {result['path']}"
-                )
-            else:
-                messagebox.showinfo("Info", "No stocks meet the criteria.")
-        except Exception as e:
-            messagebox.showerror("Error", f"Screening failed: {str(e)}")
-
     def _exit(self):
         """Exit the application."""
-       # if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
         self.root.quit()
 
     def run(self):

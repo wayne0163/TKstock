@@ -1,6 +1,7 @@
 import tushare as ts
 import pandas as pd
 import logging
+import os
 
 class DataAcquisition:
     def __init__(self, tushare_token):
@@ -12,12 +13,17 @@ class DataAcquisition:
 
     def _setup_logging(self):
         """Configure logging."""
+        # 确保日志目录存在
+        log_dir = 'data/logs'
+        os.makedirs(log_dir, exist_ok=True)
+        
         logging.basicConfig(
-            filename='data/logs/data_update.log',
+            filename=os.path.join(log_dir, 'data_update.log'),
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
 
+    # 其余方法保持不变
     def get_trade_calendar(self, start_date, end_date):
         """Get trading calendar."""
         try:
