@@ -28,12 +28,8 @@ def process_stock(ts_code, df, analyzer):
         
         df = analyzer.calculate_indicators(df)
         result = analyzer.check_conditions(df)
-        if result is True:
-            passed = True
-            reason = 'Passed'
-        else:
-            passed = False
-            reason = str(result)  # 1-5 for failed condition, 99 for insufficient data
+        passed = result == 0
+        reason = str(result)  # 0 (pass), 1-5 (failed condition), 99 (insufficient data)
         
         latest = df.iloc[-1]
         return {

@@ -49,7 +49,7 @@ class TechnicalAnalyzer:
             raise
 
     def check_conditions(self, df):
-        """Check screening conditions, return True or failed condition number (1-5)."""
+        """Check screening conditions, return 0 (pass) or failed condition number (1-5, 99)."""
         if len(df) < 242:
             return 99  # Insufficient data
         
@@ -90,4 +90,4 @@ class TechnicalAnalyzer:
         if not cond5:
             return 5
         
-        return True
+        return 0  # Pass
