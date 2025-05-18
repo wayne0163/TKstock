@@ -1,5 +1,7 @@
 # Stock Data Management and Screening System
 
+运行时请键入如下命令：  python src/main.py
+
 A Python-based system for downloading, managing, and screening stock data using Tushare API, SQLite, and Tkinter GUI.
 
 ## Features

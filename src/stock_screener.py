@@ -135,6 +135,8 @@ class StockScreener:
                 result_df = pd.DataFrame(results)
                 numeric_cols = result_df.select_dtypes(include=[np.number]).columns
                 result_df[numeric_cols] = result_df[numeric_cols].round(2)
+                result_df = result_df[result_df['reason'] == '0']  
+                # Only include passed stocks,如果需要知道全部结果，可以去掉这一行。
                 
                 save_dir = "data/results"
                 os.makedirs(save_dir, exist_ok=True)
