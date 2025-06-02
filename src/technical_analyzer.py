@@ -42,6 +42,21 @@ class TechnicalAnalyzer:
             # Volume Moving Averages
             df['VOL_MA3'] = df['vol'].rolling(3, min_periods=1).mean()
             df['VOL_MA18'] = df['vol'].rolling(18, min_periods=1).mean()
+
+            # 新增：计算相对高度
+            if len(df) >= 240:  # 假设一年有 240 个交易日
+                past_year = df.iloc[-240:]
+                min_price = past_year['low'].min()
+                max_price = past_year['high'].max()
+                current_price = df['close'].iloc[-1]
+                if max_price > min_price:
+                    relative_height = (current_price - min_price) / (max_price - min_price) * 100
+                else:
+                    relative_height = 0  # 处理最高价等于最低价的情况
+                df['relative_height'] = relative_height
+            else:
+                df['relative_height'] = np.nan  # 数据不足
+
             
             return df.dropna()
         except Exception as e:

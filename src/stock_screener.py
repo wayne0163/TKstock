@@ -22,6 +22,7 @@ def process_stock(ts_code, df, analyzer):
                 'RSI13': None,
                 'VOL_MA3': None,
                 'VOL_MA18': None,
+                'relative_height': None,
                 'passed': False,
                 'reason': '99'  # Insufficient data
             }
@@ -42,6 +43,7 @@ def process_stock(ts_code, df, analyzer):
             'RSI13': round(latest['RSI13'], 2),
             'VOL_MA3': round(latest['VOL_MA3'], 2),
             'VOL_MA18': round(latest['VOL_MA18'], 2),
+            'relative_height': round(latest['relative_height'], 2) if 'relative_height' in df else None,
             'passed': passed,
             'reason': reason
         }
@@ -56,6 +58,7 @@ def process_stock(ts_code, df, analyzer):
             'RSI13': None,
             'VOL_MA3': None,
             'VOL_MA18': None,
+            'relative_height': None,
             'passed': False,
             'reason': f'Error: {str(e)}'
         }
@@ -118,6 +121,7 @@ class StockScreener:
                 if ts_code not in processed_codes:
                     results.append({
                         'ts_code': ts_code,
+                        'relative_height': None,
                         'close': None,
                         'MA20': None,
                         'MA60': None,
